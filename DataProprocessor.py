@@ -32,7 +32,9 @@ class DataPreprocessor:
         self.addAllStarSelection()
         self.addEndOfSeasonTeamsVoting()
         self.addEndOfSeasonTeams()
-
+        # Opponents stats by team is not useful in my opinion, ignorign those files
+        self.addPer36Min()
+        
     def getUniquePlayerRecord(self) -> pd.DataFrame():
         """
         A set of composite primary keys are generated using Advanced.csv and Player Totals.csv
@@ -92,9 +94,9 @@ class DataPreprocessor:
         
         # Drop unneccessary columns
         # number_tm is duplicated with End Of Season Teams so removed
-        df = df.drop(["seas_id", "lg", "age", "type", "position", "tm", "pts_won", "pts_max", "number_tm"], axis=1)
+        df = df.drop(["seas_id", "player", "lg", "age", "type", "position", "tm", "pts_won", "pts_max", "number_tm"], axis=1)
 
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id", "player"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
         # Replace NA with 0 assuming 0 votes received
         self.unique_player_record_df[["share","x1st_tm","x2nd_tm","x3rd_tm"]] = self.unique_player_record_df[["share","x1st_tm","x2nd_tm","x3rd_tm"]].replace({"NA": 0, np.nan: 0})
     
@@ -104,27 +106,47 @@ class DataPreprocessor:
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["lg","position","seas_id","birth_year","tm","age"], axis=1)
+        df = df.drop(["lg","player","position","seas_id","birth_year","tm","age"], axis=1)
         
         # Replace ABA and BAA by NBA
         df["type"] = df["type"].replace({"All-ABA": "All-NBA", "All-BAA": "All-NBA"})
 
-        # Split into a few columns as 1 player can have mutliple awards
+        
         awards = df["type"].drop_duplicates().to_list()
-
         temp_dfs = list()
-
+        # Create a temp df for each award
+        # Split into a few columns as 1 player can have mutliple awards
         for award in awards:
             temp_df = df[df["type"]==award]
             temp_df = temp_df.rename(columns={"number_tm": award})
             temp_df = temp_df.drop(["type"], axis=1)
+            temp_df = temp_df.reset_index(drop=True)
             temp_dfs += [temp_df]
         
+        # Add each result back to main df
         for temp_df in temp_dfs:
-            print(temp_df.head(5))
+            self.unique_player_record_df = pd.merge(self.unique_player_record_df, temp_df, on=["season", "player_id"], how="left")
 
-        print(self.unique_player_record_df.head(5))
-
+    def addPer36Min(self):
+        file_name = "Per 36 Minutes.csv"
+        df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
+        
+        # Drop unneccessary columns
+        df = df.drop(["seas_id", "player", "birth_year", "pos", "age", "experience", "lg", "tm", "g", "gs", "mp"], axis=1)
+        
+        advanced_stats = [
+            "fg_per_36_min","fga_per_36_min","fg_percent","x3p_per_36_min","x3pa_per_36_min","x3p_percent","x2p_per_36_min",
+            "x2pa_per_36_min",'x2p_percent',"ft_per_36_min","fta_per_36_min","ft_percent","orb_per_36_min","drb_per_36_min",
+            "trb_per_36_min","ast_per_36_min","stl_per_36_min","blk_per_36_min","tov_per_36_min","pf_per_36_min","pts_per_36_min"
+        ]
+        
+        # Replace NA with 0s
+        df[advanced_stats] = df[advanced_stats].replace("NA", 0)
+        
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
+        
+        
+        
 if __name__ == "__main__":
     dp = DataPreprocessor()
     
