@@ -34,6 +34,7 @@ class DataPreprocessor:
         self.addEndOfSeasonTeams()
         # Opponents stats by team is not useful in my opinion, ignorign those files
         self.addPer36Min()
+        self.addPer100Pos()
         
     def getUniquePlayerRecord(self) -> pd.DataFrame():
         """
@@ -142,9 +143,41 @@ class DataPreprocessor:
         
         # Replace NA with 0s
         df[advanced_stats] = df[advanced_stats].replace("NA", 0)
+        df.rename(columns={
+                                "fg_percent": "fg_percent_per_36_min", 
+                                "ft_percent": "ft_percent_per_36_min",
+                                "x2p_percent": "x2p_percent_per_36_min",
+                                "x3p_percent": "x3p_percent_per_36_min"
+                           })
         
         self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
         
+    def addPer100Pos(self):
+        file_name = "Per 100 Poss.csv"
+        df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
+        
+        # Drop unneccessary columns
+        df = df.drop(["seas_id", "player", "birth_year", "pos", "age", "experience", "lg", "tm", "g", "gs", "mp"], axis=1)
+        
+        advanced_stats = [
+            "fg_per_100_poss","fga_per_100_poss","fg_percent","x3p_per_100_poss","x3pa_per_100_poss","x3p_percent",'x2p_per_100_poss',
+            "x2pa_per_100_poss","x2p_percent","ft_per_100_poss","fta_per_100_poss","ft_percent","orb_per_100_poss","drb_per_100_poss",
+            "trb_per_100_poss","ast_per_100_poss","stl_per_100_poss","blk_per_100_poss","tov_per_100_poss","pf_per_100_poss","pts_per_100_poss",
+            "o_rtg","d_rtg"
+        ]
+        
+        # Replace NA with 0s
+        df[advanced_stats] = df[advanced_stats].replace("NA", 0)
+        df.rename(columns={
+            "fg_percent": "fg_percent_per_100_poss", 
+            "ft_percent": "ft_percent_per_100_poss",
+            "x2p_percent": "x2p_percent_per_100_poss",
+            "x3p_percent": "x3p_percent_per_100_poss",
+            "o_rtg": "o_rtg_per_100_poss",
+            "d_rtg": "d_rtg_per_100_poss"
+        })
+
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
         
         
 if __name__ == "__main__":
