@@ -42,46 +42,28 @@ class DataPreprocessor:
         self.addPlayerShooting()
         self.addTeamSummaries()
         self.unique_player_record_df.drop_duplicates(inplace=True)
-        self.unique_player_record_df.to_csv(os.path.join(self.data_path,"overall_results.csv"), header=True, index=False)
+        self.unique_player_record_df.to_csv(os.path.join(self.data_path,"all_stats.csv"), header=True, index=False)
         
     def getUniquePlayerRecord(self) -> pd.DataFrame():
-        """
-        A set of composite primary keys are generated using Advanced.csv and Player Totals.csv
-        The columns chosen are season, player_id, player
-        Remarks:
-        seas_id not chosen as it is not identical across files
-        season (year) + player_id = best unique keys
-        player (name) = used to identify player if player_id is not present in file
-        tm (team) -> same player can play for multiple teams in the same season
-        """
-
-        # Read the two files as Dataframes
-        advanced_df = pd.read_csv(os.path.join(self.raw_data_path,"Advanced.csv"), na_values=na_values, keep_default_na=False)
-        player_total_df = pd.read_csv(os.path.join(self.raw_data_path,"Player Totals.csv"), na_values=na_values, keep_default_na=False)
-
-        # Define composite primary keys
-        self.pks = ["season", "player_id", "player", "tm"]
-
-        # filter two Dataframes to the pks
-        advanced_df = advanced_df[self.pks]
-        player_total_df = player_total_df[self.pks]
-
-        # Concatenate two dfs and select unique values
-        return pd.concat([advanced_df, player_total_df]).drop_duplicates(["season", "player_id","tm"], keep="first").reset_index(drop=True)
+        
+        player_df = pd.read_csv(os.path.join(self.raw_data_path,"Player Season Info.csv"), na_values=na_values, keep_default_na=False)
+        player_df = player_df[["season","seas_id","player_id","player","birth_year","pos","age","tm","experience"]]
+        
+        # Fill age year by season - birth_year
+        for i, row in player_df.iterrows():
+            if row["birth_year"] != "NA" and row["age"] == "NA":
+                player_df.at[i, "age"] = int(row["season"]) - int(row["birth_year"])
+                
+        return player_df
 
     def addAdvancedRecords(self):
         file_name = "Advanced.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id", "lg"], axis=1)
+        df = df.drop(["season","player_id","player","birth_year","pos","age","tm","experience", "lg"], axis=1)
 
-        # Fill age year by season - birth_year
-        for i, row in df.iterrows():
-            if row["birth_year"] != "NA" and row["age"] == "NA":
-                df.at[i, "age"] = int(row["season"]) - int(row["birth_year"])
-
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=self.pks, how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
 
     def addAllStarSelection(self):
         """
@@ -103,19 +85,19 @@ class DataPreprocessor:
         
         # Drop unneccessary columns
         # number_tm is duplicated with End Of Season Teams so removed
-        df = df.drop(["seas_id", "player", "lg", "age", "type", "position", "tm", "pts_won", "pts_max", "number_tm"], axis=1)
+        df = df.drop(["season","player_id","player", "lg", "age", "type", "position", "tm", "pts_won", "pts_max", "number_tm"], axis=1)
 
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
         # Replace NA with 0 assuming 0 votes received
         self.unique_player_record_df[["share","x1st_tm","x2nd_tm","x3rd_tm"]] = self.unique_player_record_df[["share","x1st_tm","x2nd_tm","x3rd_tm"]].replace({"NA": 0, np.nan: 0})
-    
+
 
     def addEndOfSeasonTeams(self):
         file_name = "End of Season Teams.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["lg","player","position","seas_id","birth_year","tm","age"], axis=1)
+        df = df.drop(["season","lg","player_id","player","position","birth_year","tm","age"], axis=1)
         
         # Replace ABA and BAA by NBA
         df["type"] = df["type"].replace({"All-ABA": "All-NBA", "All-BAA": "All-NBA"})
@@ -134,14 +116,14 @@ class DataPreprocessor:
         
         # Add each result back to main df
         for temp_df in temp_dfs:
-            self.unique_player_record_df = pd.merge(self.unique_player_record_df, temp_df, on=["season", "player_id"], how="left")
+            self.unique_player_record_df = pd.merge(self.unique_player_record_df, temp_df, on=["seas_id"], how="left")
 
     def addPer36Min(self):
         file_name = "Per 36 Minutes.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id", "player", "birth_year", "pos", "age", "experience", "lg", "g", "gs", "mp"], axis=1)
+        df = df.drop(["season","player_id", "player", "birth_year", "pos", "age", "experience", "lg", "g", "gs", "mp", "tm"], axis=1)
         
         advanced_stats = [
             "fg_per_36_min","fga_per_36_min","fg_percent","x3p_per_36_min","x3pa_per_36_min","x3p_percent","x2p_per_36_min",
@@ -158,14 +140,14 @@ class DataPreprocessor:
                                 "x3p_percent": "x3p_percent_per_36_min"
                            })
         
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id", "tm"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
         
     def addPer100Pos(self):
         file_name = "Per 100 Poss.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id", "player", "birth_year", "pos", "age", "experience", "lg", "g", "gs", "mp"], axis=1)
+        df = df.drop(["season","player_id", "player", "birth_year", "pos", "age", "experience", "lg", "g", "gs", "mp","tm"], axis=1)
         
         advanced_stats = [
             "fg_per_100_poss","fga_per_100_poss","fg_percent","x3p_per_100_poss","x3pa_per_100_poss","x3p_percent",'x2p_per_100_poss',
@@ -185,14 +167,14 @@ class DataPreprocessor:
             "d_rtg": "d_rtg_per_100_poss"
         })
 
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id", "tm"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
         
     def addPlayerAward(self):
         file_name = "Player Award Shares.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["player", "age", "tm", "first", "pts_won", "pts_max", "seas_id"], axis=1)
+        df = df.drop(["season","player", "age", "tm", "first", "pts_won", "pts_max", "player_id"], axis=1)
         
         df["award"] = df["award"].replace({"aba mvp": "nba mvp", "aba roy": "nba roy"})
         
@@ -210,23 +192,23 @@ class DataPreprocessor:
         
         # Add each result back to main df
         for temp_df in temp_dfs:
-            self.unique_player_record_df = pd.merge(self.unique_player_record_df, temp_df, on=["season", "player_id"], how="left")
+            self.unique_player_record_df = pd.merge(self.unique_player_record_df, temp_df, on=["seas_id"], how="left")
     
     def addPlayerPerGame(self):
         file_name = "Player Per Game.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id","player","birth_year","pos","age","experience","lg","tm","g","gs"], axis=1)
+        df = df.drop(["season","player_id","player","birth_year","pos","age","experience","lg","tm","g","gs"], axis=1)
 
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
     
     def addPlayerPlayByPlay(self):
         file_name = "Player Play By Play.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id","player","birth_year","pos","age","experience","lg","g","mp"], axis=1)
+        df = df.drop(["season","player_id","player","birth_year","pos","age","experience","lg","g","mp","tm"], axis=1)
         
         numerical_cols = [
             "pg_percent","sg_percent","sf_percent","pf_percent","c_percent","on_court_plus_minus_per_100_poss","net_plus_minus_per_100_poss",
@@ -235,22 +217,21 @@ class DataPreprocessor:
         ]
         
         df[numerical_cols] = df[numerical_cols].replace("NA", 0)
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id", "tm"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
     
     def addPlayerShooting(self):
         file_name = "Player Shooting.csv"
         df = pd.read_csv(os.path.join(self.raw_data_path, file_name), na_values=na_values, keep_default_na=False)
         
         # Drop unneccessary columns
-        df = df.drop(["seas_id","player","birth_year","pos","age","experience","lg","g","mp"], axis=1)
+        df = df.drop(["season","player_id","player","birth_year","pos","age","experience","lg","g","mp","tm"], axis=1)
         
         numerical_cols = df.columns.tolist()
-        numerical_cols.remove("season")
-        numerical_cols.remove("player_id")
+        numerical_cols.remove("seas_id")
         
         df[numerical_cols] = df[numerical_cols].replace("NA", 0)
         
-        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["season", "player_id","tm"], how="left")
+        self.unique_player_record_df = pd.merge(self.unique_player_record_df, df, on=["seas_id"], how="left")
 
     def addTeamSummaries(self):
         file_name = "Team Summaries.csv"
